@@ -1,9 +1,8 @@
 #include "SpotifyClient.h"
 
 //url will be <name>.local
-SpotifyClient::SpotifyClient(const char* name){
-	Serial.println(name);
-	if (MDNS.begin(name)) {
+SpotifyClient::SpotifyClient(String name){
+	if (MDNS.begin(name.c_str())) {
 		Serial.println("MDNS responder started");
 	}
 	//http://name.local/authentication/
@@ -17,6 +16,7 @@ SpotifyClient::SpotifyClient(const char* name){
 //code will be send to URI in callbackLink.
 //todo: handel non autentification
 String SpotifyClient::startAuthentication(){
+	Serial.println("\n\nstartAuthentication");
 	Serial.println("start Server");
 	String requestCode = "";
 
@@ -69,20 +69,21 @@ String SpotifyClient::startAuthentication(){
 //get authenication und refreshtoken
 //todo:errorhandling
 void SpotifyClient::getAccessAndRefreshToken(String code){
+	Serial.println("\n\ngetAccessAndRefreshToken");
 	//https://accounts.spotify.com/api/token
 	const char* host = "accounts.spotify.com";
 	const int port = 443;
 
 	//connect to spotify
 	if (!this->apiClient->connect(host, port)) {
-	Serial.println("connection failed");
-	return;
+		Serial.println("connection failed");
+		return;
 	}
 
 	//generate autentification
 	String authorizationRaw = String(CLIENTID) + ":" + String(CLIENTSECRET);
 	String authorization = base64::encode(authorizationRaw);
-	this->apiClient->setAuthentication(authorization.c_str());
+	this->apiClient->setAuthentication( "Basic " + authorization);
 	
 	String url = "/api/token";
 	//create body content
@@ -94,16 +95,15 @@ void SpotifyClient::getAccessAndRefreshToken(String code){
 	this->apiClient->POST(url.c_str(), content);
 	DynamicJsonDocument doc = *this->apiClient->getData();
 
-
-	Serial.println(measureJson(*this->apiClient->getData()));
-
 	const char* accessToken = doc["access_token"];
 	const char* expires_in = doc["expires_in"];
 	const char* refresh_token = doc["refresh_token"];
 	
 	this->refresh_token = new String(refresh_token);
-	this->expires_in = String(expires_in).toInt();
+	this->accessTokenExpiresTime = String(expires_in).toInt()*1000+millis();
 	this->accessToken = new String(accessToken);
+
+	this->apiClient->setAuthentication( "Bearer " + *this->accessToken);
 
 }
 
@@ -115,8 +115,68 @@ void SpotifyClient::setRefreshToken(String refreshToken){
 	this->refresh_token = new String(refreshToken);
 }
 
+//todo:errorhandling
+void SpotifyClient::checkAccessToken(){
+	if(millis()>this->accessTokenExpiresTime){
+		this->renewAccessToken();
+	}
+}
+
+void SpotifyClient::renewAccessToken(){
+	Serial.println("\n\nrenewAccessToken");
+	//https://accounts.spotify.com/api/token
+	const char* host = "accounts.spotify.com";
+	const int port = 443;
+
+	//connect to spotify
+	if (!this->apiClient->connect(host, port)) {
+		Serial.println("connection failed");
+		return;
+	}
+
+	//generate autentification
+	String authorizationRaw = String(CLIENTID) + ":" + String(CLIENTSECRET);
+	String authorization = base64::encode(authorizationRaw);
+	this->apiClient->setAuthentication( "Basic " + authorization);
+	
+	String url = "/api/token";
+	//create body content
+	String content = "grant_type=refresh_token&refresh_token=" + *this->refresh_token;
+
+
+	//query
+	this->apiClient->POST(url.c_str(), content);
+	DynamicJsonDocument doc = *this->apiClient->getData();
+
+	const char* accessToken = doc["access_token"];
+	const char* expires_in = doc["expires_in"];
+	
+	this->accessTokenExpiresTime = String(expires_in).toInt()*1000+millis();
+	this->accessToken = new String(accessToken);
+
+	this->apiClient->setAuthentication("Bearer " + *this->accessToken);
+}
+
+
+int SpotifyClient::getPlayerInfo(){
+
+	Serial.println("\n\ngetPlayerInfo");
+	this->apiClient->GET("/v1/me/player");
+	return 0;
+}
+
+void SpotifyClient::startControl(){
+	Serial.println("\n\nstartControal");
+	this->apiClient->disconnet();
+	if (!this->apiClient->connect( "api.spotify.com", 443)) {
+		Serial.println("connection failed");
+		return;
+	}
+	Serial.println(this->apiClient->isConnected());
+}
+
 SpotifyClient::~SpotifyClient(){
-	Serial.println("huhu");
+	Serial.println("end");
 	delete this->apiClient;
 	delete this->callbackLink;
 	if(this->refresh_token){

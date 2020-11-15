@@ -17,13 +17,20 @@ class SpotifyClient{
 	String* refresh_token;
 	String* accessToken;
 	int expires_in;
+	int accessTokenExpiresTime;
+
+	void checkAccessToken();
+	
     
   public:
-  	SpotifyClient(const char*);
+  	SpotifyClient(String);
 	String startAuthentication();
 	void getAccessAndRefreshToken(String);
 	String* getRefreshToken();
 	void setRefreshToken(String);
+	void renewAccessToken();
+	int getPlayerInfo();
+	void startControl();
 
 
 	~SpotifyClient();
